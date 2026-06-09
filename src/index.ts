@@ -12,6 +12,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import http from 'http';
+import crypto from 'crypto';
 import open from 'open';
 import os from 'os';
 import {createEmailMessage, createEmailWithNodemailer} from "./utl.js";
@@ -153,6 +154,17 @@ async function loadCredentials() {
             process.exit(1);
         }
 
+        // Warn if the OAuth keys file (which holds the client secret) is readable
+        // by group/other. Warn only — don't fail, since Windows perms differ.
+        try {
+            const keyMode = fs.statSync(OAUTH_PATH).mode;
+            if (keyMode & 0o077) {
+                console.error(`Warning: ${OAUTH_PATH} is group/other-readable (mode ${(keyMode & 0o777).toString(8)}). It holds your OAuth client secret — run "chmod 600" to restrict it.`);
+            }
+        } catch {
+            // stat failure is non-fatal; the read below will surface real errors
+        }
+
         const keysContent = JSON.parse(fs.readFileSync(OAUTH_PATH, 'utf8'));
         const keys = keysContent.installed || keysContent.web;
 
@@ -201,15 +213,23 @@ async function loadCredentials() {
 
 async function authenticate(scopes: string[]) {
     const server = http.createServer();
-    server.listen(3000, '127.0.0.1');
+    // Bind to loopback by default. The Docker image sets GMAIL_OAUTH_BIND_ADDR=0.0.0.0
+    // so the published port (-p 127.0.0.1:3000:3000) can reach it — published ports
+    // never forward to a container's loopback interface.
+    server.listen(3000, process.env.GMAIL_OAUTH_BIND_ADDR || '127.0.0.1');
 
     // Convert shorthand scope names (e.g., "gmail.readonly") to full Google API URLs
     const scopeUrls = scopeNamesToUrls(scopes);
+
+    // CSRF protection: bind an unguessable state value to this auth attempt and
+    // require it back on the callback before exchanging the authorization code.
+    const expectedState = crypto.randomBytes(16).toString('hex');
 
     return new Promise<void>((resolve, reject) => {
         const authUrl = oauth2Client.generateAuthUrl({
             access_type: 'offline',
             scope: scopeUrls,
+            state: expectedState,
         });
 
         console.log('Requesting scopes:', scopes.join(', '));
@@ -221,6 +241,14 @@ async function authenticate(scopes: string[]) {
 
             const url = new URL(req.url, 'http://localhost:3000');
             const code = url.searchParams.get('code');
+            const state = url.searchParams.get('state');
+
+            if (state !== expectedState) {
+                res.writeHead(400);
+                res.end('Invalid state parameter');
+                reject(new Error('OAuth state mismatch — possible CSRF, aborting'));
+                return;
+            }
 
             if (!code) {
                 res.writeHead(400);
@@ -608,7 +636,7 @@ async function main() {
                     try {
                         // Ensure save directory exists
                         if (!fs.existsSync(savePath)) {
-                            fs.mkdirSync(savePath, { recursive: true });
+                            fs.mkdirSync(savePath, { recursive: true, mode: 0o700 });
                         }
 
                         // Always fetch full message for metadata (needed for attachments list)
@@ -649,7 +677,7 @@ async function main() {
                         // Write file
                         const filename = `${messageId}.${format}`;
                         const fullPath = path.join(savePath, filename);
-                        fs.writeFileSync(fullPath, content, "utf-8");
+                        fs.writeFileSync(fullPath, content, { encoding: "utf-8", mode: 0o600 });
                         const stats = fs.statSync(fullPath);
 
                         // Return metadata with attachments
@@ -1269,7 +1297,7 @@ async function main() {
 
                         // Ensure save directory exists
                         if (!fs.existsSync(savePath)) {
-                            fs.mkdirSync(savePath, { recursive: true });
+                            fs.mkdirSync(savePath, { recursive: true, mode: 0o700 });
                         }
 
                         // Resolve and validate final path stays within savePath
@@ -1278,7 +1306,7 @@ async function main() {
                         if (!fullPath.startsWith(resolvedSavePath + path.sep) && fullPath !== resolvedSavePath) {
                             throw new Error('Invalid filename: path traversal detected');
                         }
-                        fs.writeFileSync(fullPath, buffer);
+                        fs.writeFileSync(fullPath, buffer, { mode: 0o600 });
 
                         return {
                             content: [

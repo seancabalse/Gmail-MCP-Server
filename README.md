@@ -4,9 +4,9 @@
 
 [![CI](https://github.com/ArtyMcLabin/Gmail-MCP-Server/actions/workflows/ci.yml/badge.svg)](https://github.com/ArtyMcLabin/Gmail-MCP-Server/actions/workflows/ci.yml)
 
-> **This is an actively maintained fork of [GongRzhe/Gmail-MCP-Server](https://github.com/GongRzhe/Gmail-MCP-Server).**
+> **This is an active fork of [ArtyMcLabin/Gmail-MCP-Server](https://github.com/ArtyMcLabin/Gmail-MCP-Server)** — which is itself a maintained fork of the original [GongRzhe/Gmail-MCP-Server](https://github.com/GongRzhe/Gmail-MCP-Server).
 >
-> The original repository has been unmaintained since August 2025 — 7+ months with zero maintainer activity and 72+ unmerged pull requests. I use this MCP server daily as part of my Claude Code workflow and depend on it working correctly, so I picked it up.
+> The original GongRzhe repository has been unmaintained since August 2025 — 7+ months with zero maintainer activity and 72+ unmerged pull requests. This fork tracks [ArtyMcLabin/Gmail-MCP-Server](https://github.com/ArtyMcLabin/Gmail-MCP-Server) and continues active development on top of it.
 >
 > **Pull requests are welcome.** If you've been sitting on fixes or features with nowhere to submit them, this is the place.
 
@@ -67,6 +67,105 @@ A Model Context Protocol (MCP) server for Gmail integration in Claude Desktop wi
 - Simple OAuth2 authentication flow with auto browser launch
 - Support for both Desktop and Web application credentials
 - Global credential storage for convenience
+
+## Step-by-Step Setup for Beginners (Docker)
+
+> **No coding required.** This walkthrough assumes you're on **macOS or Windows**, you can copy-paste into a terminal, and you already have your **`gcp-oauth.keys.json`** file (if you don't, see [Setting up Google Cloud credentials](#setting-up-google-cloud-credentials) first). Budget about 15 minutes. There is **no API key** — Gmail access is granted by signing into your own Google account during step 5.
+
+### What you'll do
+1. Install Docker Desktop
+2. Download this project
+3. Build the app (one command)
+4. Put your keys file in the folder
+5. Sign in to Google (one command + your browser)
+6. Connect it to Claude
+7. Test it
+
+---
+
+#### Step 1 — Install Docker Desktop
+
+1. Download **Docker Desktop** from [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) and install it (pick the Mac or Windows version that matches your computer).
+2. Open Docker Desktop and wait until the whale icon shows it's **running**.
+3. Open a terminal:
+   - **macOS:** press `Cmd + Space`, type `Terminal`, press Enter.
+   - **Windows:** click Start, type `PowerShell`, press Enter.
+4. Confirm Docker works — type this and press Enter:
+   ```bash
+   docker --version
+   ```
+   You should see a version number (e.g. `Docker version 27.x`). If you get "command not found", make sure Docker Desktop is open and running, then try again.
+
+#### Step 2 — Download this project
+
+In the same terminal, paste:
+```bash
+git clone https://github.com/ArtyMcLabin/Gmail-MCP-Server.git
+cd Gmail-MCP-Server
+```
+> If `git` isn't installed, instead go to the project's GitHub page, click the green **Code** button → **Download ZIP**, unzip it, then in the terminal type `cd ` (with a space) and drag the unzipped folder onto the terminal window and press Enter.
+
+#### Step 3 — Build the app (one command)
+
+```bash
+docker build -t gmail-mcp .
+```
+This takes a few minutes the first time. It's done when you see a line ending in `naming to docker.io/library/gmail-mcp`. You only do this once.
+
+#### Step 4 — Put your keys file in the folder
+
+Copy your **`gcp-oauth.keys.json`** file into the `Gmail-MCP-Server` folder you're currently in (the one from step 2). That's the only place it needs to be — the next command picks it up automatically.
+
+#### Step 5 — Sign in to Google
+
+Run:
+```bash
+docker compose run --rm --service-ports auth
+```
+Then:
+1. The terminal prints a long web address starting with `https://accounts.google.com/...`. **Select and copy** that entire address.
+2. Paste it into your web browser and press Enter.
+3. Sign in with the Google account whose Gmail you want Claude to manage.
+4. If Google shows **"Google hasn't verified this app"**, that's expected for your own credentials — click **Advanced** → **Go to … (unsafe)** and continue.
+5. Approve the requested permissions. The browser will say **"Authentication successful! You can close this window."**
+6. Back in the terminal you'll see **"Credentials saved"**. You're authenticated. You only do this once.
+
+> Your login is stored securely in a Docker storage volume (named `gmail-mcp`), not in the project folder. You can safely delete the project folder afterward — the build image and your login remain.
+
+#### Step 6 — Connect it to Claude
+
+Add this server to your Claude client.
+
+**Claude Desktop** — open its config file and add the `gmail` block:
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "gmail": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-v", "gmail-mcp:/root/.gmail-mcp", "gmail-mcp"]
+    }
+  }
+}
+```
+Save the file and **fully quit and reopen** Claude Desktop.
+
+**Claude Code (terminal)** — instead of editing a file, just run:
+```bash
+claude mcp add gmail -- docker run -i --rm -v gmail-mcp:/root/.gmail-mcp gmail-mcp
+```
+
+#### Step 7 — Test it
+
+Ask Claude something like: *"Search my Gmail for the 5 most recent emails."* If it lists your emails, you're done. 🎉
+
+> **Want to limit what Claude can do?** By default it gets full read/write access. To grant **read-only** access instead, re-run step 5 as:
+> `docker compose run --rm --service-ports auth auth --scopes=gmail.readonly`
+> See [OAuth Scopes](#oauth-scopes) for all options.
+
+---
 
 ## Installation & Authentication
 
@@ -148,20 +247,24 @@ npm run build
 
 ### Docker Support
 
-If you prefer using Docker:
+This is a stdio MCP server, so the MCP client launches it per-session via `docker run -i`. Works identically on **macOS and Windows** with Docker Desktop (both run Linux containers). Auth and credentials persist in a named volume — the config below is byte-for-byte identical across OSes.
 
-1. Authentication:
+**1. Build the image:**
 ```bash
-docker run -i --rm \
-  --mount type=bind,source=/path/to/gcp-oauth.keys.json,target=/gcp-oauth.keys.json \
-  -v mcp-gmail:/gmail-server \
-  -e GMAIL_OAUTH_PATH=/gcp-oauth.keys.json \
-  -e "GMAIL_CREDENTIALS_PATH=/gmail-server/credentials.json" \
-  -p 3000:3000 \
-  mcp/gmail auth
+docker build -t gmail-mcp .
 ```
 
-2. Usage:
+**2. Authenticate (one time).** This publishes the OAuth callback to host loopback and stores credentials in the `gmail-mcp` named volume. The container can't open a browser, so **copy the printed URL into your own browser**:
+```bash
+docker run -i --rm \
+  -v gmail-mcp:/root/.gmail-mcp \
+  -v /ABS/PATH/gcp-oauth.keys.json:/app/gcp-oauth.keys.json:ro \
+  -p 127.0.0.1:3000:3000 \
+  gmail-mcp auth --scopes=gmail.modify,gmail.settings.basic
+```
+On **Windows**, run the same command and point the keys mount at your file, e.g. `-v C:\Users\you\gcp-oauth.keys.json:/app/gcp-oauth.keys.json:ro`. (Prefer Docker Compose? `OAUTH_KEYS=/ABS/PATH/gcp-oauth.keys.json docker compose run --rm --service-ports auth --scopes=...`.)
+
+**3. Configure your MCP client** (same on macOS & Windows — uses the named volume, no host paths):
 ```json
 {
   "mcpServers": {
@@ -172,10 +275,8 @@ docker run -i --rm \
         "-i",
         "--rm",
         "-v",
-        "mcp-gmail:/gmail-server",
-        "-e",
-        "GMAIL_CREDENTIALS_PATH=/gmail-server/credentials.json",
-        "mcp/gmail"
+        "gmail-mcp:/root/.gmail-mcp",
+        "gmail-mcp"
       ]
     }
   }

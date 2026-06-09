@@ -1,17 +1,37 @@
-version: '3.8'
+# This is a stdio MCP server — at runtime it is launched per-session by the MCP
+# client via `docker run -i` (see README "Docker Support"). It is NOT a long-lived
+# network service, so there is no `up` service here.
+#
+# This compose file is a convenience for the two one-time setup steps:
+#
+#   1. Build the image:
+#        docker compose build
+#
+#   2. Authenticate (writes credentials into the named volume). Point OAUTH_KEYS at
+#      your gcp-oauth.keys.json, then run with --service-ports so the loopback
+#      callback port is published. Copy the printed URL into your host browser:
+#        OAUTH_KEYS=/abs/path/gcp-oauth.keys.json \
+#          docker compose run --rm --service-ports auth --scopes=gmail.modify,gmail.settings.basic
+#
+# After that, wire the `docker run -i` config from the README into your MCP client.
 
 services:
-  gmail-mcp:
+  auth:
     build:
       context: .
       dockerfile: Dockerfile
-    volumes:
-      - mcp-gmail:/gmail-server
-    environment:
-      - GMAIL_CREDENTIALS_PATH=/gmail-server/credentials.json
+    image: gmail-mcp
+    stdin_open: true
+    tty: true
+    command: ["auth"]
     ports:
-      - "3000:3000"
-    restart: unless-stopped
+      # Published to host loopback only; live only during the one-time auth flow.
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - gmail-mcp:/root/.gmail-mcp
+      # Your OAuth client keys, mounted into the working dir; the server copies
+      # them into the named volume on first run.
+      - ${OAUTH_KEYS:-./gcp-oauth.keys.json}:/app/gcp-oauth.keys.json:ro
 
 volumes:
-  mcp-gmail:
+  gmail-mcp:

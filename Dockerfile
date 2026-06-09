@@ -9,19 +9,19 @@ COPY package.json package-lock.json* ./
 COPY tsconfig.json ./
 COPY src ./src
 
-# Install dependencies (which will trigger build via prepare script)
+# Install dependencies (which triggers the build via the prepare script)
 RUN npm ci
 
-# Create directory for credentials and config
-RUN mkdir -p /gmail-server /root/.gmail-mcp
-
-# Set environment variables
+# Config (OAuth keys + credentials) lives under the user's home dir by default
+# (os.homedir() => /root, so CONFIG_DIR => /root/.gmail-mcp). Mount a named volume
+# there to persist auth across runs — no env path overrides needed.
 ENV NODE_ENV=production
-ENV GMAIL_CREDENTIALS_PATH=/gmail-server/credentials.json
-ENV GMAIL_OAUTH_PATH=/root/.gmail-mcp/gcp-oauth.keys.json
 
-# Expose port for OAuth flow
-EXPOSE 3000
+# During the one-time `auth` command the OAuth callback server must bind to all
+# interfaces so a host-published port (-p 127.0.0.1:3000:3000) can reach it;
+# published ports never forward to a container's loopback interface. Outside
+# Docker the server still defaults to 127.0.0.1.
+ENV GMAIL_OAUTH_BIND_ADDR=0.0.0.0
 
 # Set entrypoint command
 ENTRYPOINT ["node", "dist/index.js"]
