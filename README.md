@@ -10,6 +10,31 @@
 >
 > **Pull requests are welcome.** If you've been sitting on fixes or features with nowhere to submit them, this is the place.
 
+## Table of Contents
+
+- [Philosophy](#philosophy)
+- [Features](#features)
+- [Choose Your Setup](#choose-your-setup)
+  - [Setup for Beginners — Docker](#step-by-step-setup-for-beginners-docker)
+  - [Setup for Beginners — Native / Node.js](#step-by-step-setup-for-beginners-native--nodejs)
+- [Installation & Authentication](#installation--authentication)
+  - [Installing from this fork](#installing-from-this-fork)
+  - [Setting up Google Cloud credentials](#setting-up-google-cloud-credentials)
+  - [Docker Support](#docker-support)
+  - [Cloud Server Authentication](#cloud-server-authentication)
+- [OAuth Scopes](#oauth-scopes)
+- [Claude Code CLI Configuration](#claude-code-cli-configuration)
+- [Available Tools](#available-tools)
+- [Filter Management Features](#filter-management-features)
+- [Advanced Search Syntax](#advanced-search-syntax)
+- [Advanced Features](#advanced-features)
+- [Security Notes](#security-notes)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [Running evals](#running-evals)
+- [License](#license)
+- [Support](#support)
+
 ## Philosophy
 
 This fork is **lean and pragmatic**. It's a local stdio MCP server — you run it on your own machine, and your LLM client already has shell + filesystem access. So the threat model is "don't leak credentials to third parties, don't break the Gmail surface" — not "defend a hosted multi-tenant service". I keep dependencies minimal. I use this daily in my own Claude Code workflow — if I wouldn't run it or maintain it myself, it doesn't go in.
@@ -67,6 +92,18 @@ A Model Context Protocol (MCP) server for Gmail integration in Claude Desktop wi
 - Simple OAuth2 authentication flow with auto browser launch
 - Support for both Desktop and Web application credentials
 - Global credential storage for convenience
+
+## Choose Your Setup
+
+There are two first-class ways to run this server. Both work identically on **macOS and Windows**, and both end with the same Claude integration — pick whichever fits your machine:
+
+| | [🐳 Docker](#step-by-step-setup-for-beginners-docker) | [⚙️ Native (Node.js)](#step-by-step-setup-for-beginners-native--nodejs) |
+|---|---|---|
+| **Best for** | Keeping everything isolated; no toolchain on your machine | Lightest footprint; you already have (or want) Node.js |
+| **Requires** | Docker Desktop | Node.js ≥ 18 |
+| **One-time build** | `docker build -t gmail-mcp .` | `npm install && npm run build` |
+
+If you're not sure, **Docker** is the most hands-off. If you already develop with Node or want the smallest install, go **Native**.
 
 ## Step-by-Step Setup for Beginners (Docker)
 
@@ -190,6 +227,133 @@ Ask Claude something like: *"Search my Gmail for the 5 most recent emails."* If 
 
 > **Want to limit what Claude can do?** By default it gets full read/write access. To grant **read-only** access instead, re-run step 5 as:
 > `docker compose run --rm --service-ports auth auth --scopes=gmail.readonly`
+> See [OAuth Scopes](#oauth-scopes) for all options.
+
+---
+
+## Step-by-Step Setup for Beginners (Native / Node.js)
+
+> **The original, no-Docker path.** Runs the server directly with Node.js. This walkthrough assumes you're on **macOS or Windows**, you can copy-paste into a terminal, and you already have your **`gcp-oauth.keys.json`** file (if you don't, see [Setting up Google Cloud credentials](#setting-up-google-cloud-credentials) first). Budget about 10 minutes. There is **no API key** — Gmail access is granted by signing into your own Google account during step 5.
+
+### What you'll do
+1. Install Node.js
+2. Download this project
+3. Build the app (two commands)
+4. Put your keys file in the folder
+5. Sign in to Google (one command + your browser)
+6. Connect it to Claude
+7. Test it
+
+---
+
+#### Step 1 — Install Node.js
+
+1. Download **Node.js (LTS, version 18 or newer)** from [nodejs.org](https://nodejs.org/) and install it (pick the macOS or Windows installer; accept the defaults).
+2. Open a terminal:
+   - **macOS:** press `Cmd + Space`, type `Terminal`, press Enter.
+   - **Windows:** click Start, type `PowerShell`, press Enter.
+3. Confirm Node works — type this and press Enter:
+   ```bash
+   node --version
+   ```
+   You should see a version number `v18` or higher (e.g. `v20.11.0`). If you get "command not found", close and reopen the terminal, or restart your computer so the new PATH takes effect.
+
+#### Step 2 — Download this project
+
+In the same terminal, paste:
+```bash
+git clone https://github.com/ArtyMcLabin/Gmail-MCP-Server.git
+cd Gmail-MCP-Server
+```
+> If `git` isn't installed, instead go to the project's GitHub page, click the green **Code** button → **Download ZIP**, unzip it, then in the terminal type `cd ` (with a space) and drag the unzipped folder onto the terminal window and press Enter.
+
+#### Step 3 — Build the app (two commands)
+
+```bash
+npm install
+npm run build
+```
+`npm install` downloads the dependencies; `npm run build` compiles the server into the `dist/` folder. You only do this once (re-run `npm run build` after pulling updates). It's done when both commands finish without errors.
+
+#### Step 4 — Put your keys file in the folder
+
+Copy your **`gcp-oauth.keys.json`** file into the `Gmail-MCP-Server` folder you're currently in (the one from step 2). On first sign-in it's automatically copied into your home config folder (`~/.gmail-mcp/`), so it works from any directory afterward.
+
+#### Step 5 — Sign in to Google
+
+Run:
+```bash
+node dist/index.js auth
+```
+Then:
+1. Your **default browser opens automatically** to a Google sign-in page. (If it doesn't, the terminal also prints a `https://accounts.google.com/...` address — copy that into your browser.)
+2. Sign in with the Google account whose Gmail you want Claude to manage.
+3. If Google shows **"Google hasn't verified this app"**, that's expected for your own credentials — click **Advanced** → **Go to … (unsafe)** and continue.
+4. Approve the requested permissions. The browser will say **"Authentication successful! You can close this window."**
+5. Back in the terminal you'll see the credentials are saved. They're stored in `~/.gmail-mcp/credentials.json`. You only do this once.
+
+#### Step 6 — Connect it to Claude
+
+Add this server to your Claude client. You'll need the **absolute path** to the project's `dist/index.js`. To get it, run this from inside the `Gmail-MCP-Server` folder:
+- **macOS/Linux:** `echo "$(pwd)/dist/index.js"`
+- **Windows (PowerShell):** `echo "$(Get-Location)\dist\index.js"`
+
+Copy that path — you'll paste it into the config below. The launch command is **`node` on both macOS and Windows**; only the path differs.
+
+> **Important (especially on macOS):** Claude Desktop is a graphical app and usually does **not** see your terminal's `PATH`, so a bare `"node"` command can fail to launch (you'll see `-32000`). Use the **full path to the `node` program** in the config. Find it by running `which node` (macOS/Linux) or `where node` (Windows) in your terminal.
+>
+> Typical locations:
+> - **macOS (Node LTS installer):** `/usr/local/bin/node` — or `/opt/homebrew/bin/node` on Apple Silicon (Homebrew)
+> - **Windows (Node installer):** `C:\Program Files\nodejs\node.exe`
+
+**Option A — Claude Desktop (config file).** Open the config file for your OS:
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+Add the `gmail` entry inside `mcpServers`. If the file is empty, paste the whole thing; if it already has other settings, just add the `"gmail"` key alongside them (don't delete what's there).
+
+**macOS:**
+```json
+{
+  "mcpServers": {
+    "gmail": {
+      "command": "/usr/local/bin/node",
+      "args": ["/Users/you/Gmail-MCP-Server/dist/index.js"]
+    }
+  }
+}
+```
+
+**Windows** (note the doubled backslashes `\\` — required in JSON):
+```json
+{
+  "mcpServers": {
+    "gmail": {
+      "command": "C:\\Program Files\\nodejs\\node.exe",
+      "args": ["C:\\Users\\you\\Gmail-MCP-Server\\dist\\index.js"]
+    }
+  }
+}
+```
+Save, then **fully quit Claude Desktop** (macOS: `Cmd+Q`; Windows: right-click the tray icon → Quit — closing the window isn't enough) and reopen it.
+
+**Option B — Claude Code (terminal).** No file editing needed. The CLI inherits your shell `PATH`, so a bare `node` is fine:
+```bash
+claude mcp add gmail -- node /ABS/PATH/Gmail-MCP-Server/dist/index.js
+```
+
+> **Troubleshooting `-32000` (server won't connect):**
+> - **Node isn't installed / wrong version** — `node --version` must print `v18` or higher in the same terminal.
+> - **Wrong `node` path** — for Claude Desktop, use the absolute path from `which node` / `where node` (see the Important note above).
+> - **Wrong script path** — the path in `args` must point at the real `dist/index.js` (re-run the `echo` command above to get it). If `dist/` is missing, re-run `npm run build` (Step 3).
+> - **Invalid JSON** — one stray comma breaks the whole file. Validate it: `python3 -m json.tool "<path-to-config>"` should print it back without errors.
+
+#### Step 7 — Test it
+
+Ask Claude something like: *"Search my Gmail for the 5 most recent emails."* If it lists your emails, you're done. 🎉
+
+> **Want to limit what Claude can do?** By default it gets full read/write access. To grant **read-only** access instead, re-run step 5 as:
+> `node dist/index.js auth --scopes=gmail.readonly`
 > See [OAuth Scopes](#oauth-scopes) for all options.
 
 ---
@@ -406,7 +570,9 @@ To change your scopes, simply run the auth command again with different scopes. 
 
 ## Claude Code CLI Configuration
 
-To use this MCP server with [Claude Code](https://docs.anthropic.com/en/docs/claude-code), add it to your MCP settings.
+To use this MCP server with [Claude Code](https://docs.anthropic.com/en/docs/claude-code), add it to your MCP settings. This is the **Native (Node.js)** reference config — for the guided version, see the [Native walkthrough](#step-by-step-setup-for-beginners-native--nodejs) (or the [Docker walkthrough](#step-by-step-setup-for-beginners-docker) if you'd rather not install Node).
+
+> **For GUI clients (e.g. Claude Desktop), replace `"node"` with the absolute path to the binary** — GUI apps don't inherit your shell `PATH`, so a bare `node` may fail with `-32000`. Use `/usr/local/bin/node` (macOS Intel), `/opt/homebrew/bin/node` (macOS Apple Silicon), or `C:\\Program Files\\nodejs\\node.exe` (Windows, doubled backslashes). Find yours with `which node` / `where node`. CLI clients (Claude Code) can keep the bare `node`.
 
 ### Read-Only Configuration (Recommended for Safe Browsing)
 
@@ -422,7 +588,7 @@ Then add to your Claude Code MCP settings (`~/.claude/mcp_settings.json` or proj
 {
   "mcpServers": {
     "gmail": {
-      "command": "npx",
+      "command": "node",
       "args": ["/absolute/path/to/Gmail-MCP-Server/dist/index.js"]
     }
   }
@@ -447,7 +613,7 @@ node dist/index.js auth --scopes=gmail.modify,gmail.settings.basic
 {
   "mcpServers": {
     "gmail": {
-      "command": "npx",
+      "command": "node",
       "args": ["/absolute/path/to/Gmail-MCP-Server/dist/index.js"]
     }
   }
