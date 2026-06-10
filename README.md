@@ -134,28 +134,55 @@ Then:
 
 #### Step 6 — Connect it to Claude
 
-Add this server to your Claude client.
+Add this server to your Claude client. **Docker Desktop must be open and running** whenever you use Claude — Claude launches the container on demand.
 
-**Claude Desktop** — open its config file and add the `gmail` block:
+> **Important (especially on macOS):** Claude Desktop is a graphical app and usually does **not** see your terminal's `PATH`, so a bare `"docker"` command often fails to launch (you'll see `-32000`). Use the **full path to the `docker` program** in the config. Find it by running `which docker` (macOS/Linux) or `where docker` (Windows) in your terminal.
+>
+> Typical locations:
+> - **macOS (Docker Desktop):** `/usr/local/bin/docker` — or `/opt/homebrew/bin/docker` on Apple Silicon
+> - **Windows (Docker Desktop):** `C:\Program Files\Docker\Docker\resources\bin\docker.exe`
+
+**Option A — Claude Desktop (config file).** Open the config file for your OS:
 - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
+Add the `gmail` entry inside `mcpServers`. If the file is empty, paste the whole thing; if it already has other settings, just add the `"mcpServers"` key alongside them (don't delete what's there).
+
+**macOS:**
 ```json
 {
   "mcpServers": {
     "gmail": {
-      "command": "docker",
+      "command": "/usr/local/bin/docker",
       "args": ["run", "-i", "--rm", "-v", "gmail-mcp:/root/.gmail-mcp", "gmail-mcp"]
     }
   }
 }
 ```
-Save the file and **fully quit and reopen** Claude Desktop.
 
-**Claude Code (terminal)** — instead of editing a file, just run:
+**Windows** (note the doubled backslashes `\\` — required in JSON):
+```json
+{
+  "mcpServers": {
+    "gmail": {
+      "command": "C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe",
+      "args": ["run", "-i", "--rm", "-v", "gmail-mcp:/root/.gmail-mcp", "gmail-mcp"]
+    }
+  }
+}
+```
+Save, then **fully quit Claude Desktop** (macOS: `Cmd+Q`; Windows: right-click the tray icon → Quit — closing the window isn't enough) and reopen it.
+
+**Option B — Claude Code (terminal).** No file editing needed. The CLI inherits your shell `PATH`, so a bare `docker` is fine:
 ```bash
 claude mcp add gmail -- docker run -i --rm -v gmail-mcp:/root/.gmail-mcp gmail-mcp
 ```
+
+> **Troubleshooting `-32000` (server won't connect):**
+> - **Docker isn't running** — open Docker Desktop and wait for the whale icon to go steady.
+> - **Wrong `docker` path** — use the absolute path from `which docker` / `where docker` (see the Important note above).
+> - **Invalid JSON** — one stray comma breaks the whole file. Validate it: `python3 -m json.tool "<path-to-config>"` should print it back without errors.
+> - **Empty/missing login** — the volume name in your config (`gmail-mcp`) must match the one you authenticated into. If you ran auth with `docker compose`, this repo pins the volume name to `gmail-mcp` so they match; if you see "OAuth keys file not found", re-run Step 5.
 
 #### Step 7 — Test it
 
@@ -264,7 +291,7 @@ docker run -i --rm \
 ```
 On **Windows**, run the same command and point the keys mount at your file, e.g. `-v C:\Users\you\gcp-oauth.keys.json:/app/gcp-oauth.keys.json:ro`. (Prefer Docker Compose? `OAUTH_KEYS=/ABS/PATH/gcp-oauth.keys.json docker compose run --rm --service-ports auth --scopes=...`.)
 
-**3. Configure your MCP client** (same on macOS & Windows — uses the named volume, no host paths):
+**3. Configure your MCP client** (same volume args on macOS & Windows — no host paths):
 ```json
 {
   "mcpServers": {
@@ -282,6 +309,7 @@ On **Windows**, run the same command and point the keys mount at your file, e.g.
   }
 }
 ```
+> **For GUI clients (e.g. Claude Desktop), replace `"docker"` with the absolute path to the binary** — GUI apps don't inherit your shell `PATH`. Use `/usr/local/bin/docker` (macOS Intel), `/opt/homebrew/bin/docker` (macOS Apple Silicon), or `C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe` (Windows, with doubled backslashes). See [Step 6](#step-6--connect-it-to-claude) for the full walkthrough and `-32000` troubleshooting. CLI clients (Claude Code) can keep the bare `docker`.
 
 ### Cloud Server Authentication
 

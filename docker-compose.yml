@@ -35,3 +35,7 @@ services:
 
 volumes:
   gmail-mcp:
+    # Pin the literal volume name so it matches the `docker run -v gmail-mcp:...`
+    # config in the README. Without this, Compose prefixes it with the project
+    # folder name (e.g. gmail-mcp-server_gmail-mcp) and the client can't find it.
+    name: gmail-mcp
