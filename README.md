@@ -137,7 +137,7 @@ If you're not sure, **Docker** is the most hands-off. If you already develop wit
 
 In the same terminal, paste:
 ```bash
-git clone https://github.com/ArtyMcLabin/Gmail-MCP-Server.git
+git clone https://github.com/seancabalse/Gmail-MCP-Server.git
 cd Gmail-MCP-Server
 ```
 > If `git` isn't installed, instead go to the project's GitHub page, click the green **Code** button → **Download ZIP**, unzip it, then in the terminal type `cd ` (with a space) and drag the unzipped folder onto the terminal window and press Enter.
@@ -262,7 +262,7 @@ Ask Claude something like: *"Search my Gmail for the 5 most recent emails."* If 
 
 In the same terminal, paste:
 ```bash
-git clone https://github.com/ArtyMcLabin/Gmail-MCP-Server.git
+git clone https://github.com/seancabalse/Gmail-MCP-Server.git
 cd Gmail-MCP-Server
 ```
 > If `git` isn't installed, instead go to the project's GitHub page, click the green **Code** button → **Download ZIP**, unzip it, then in the terminal type `cd ` (with a space) and drag the unzipped folder onto the terminal window and press Enter.
@@ -363,7 +363,7 @@ Ask Claude something like: *"Search my Gmail for the 5 most recent emails."* If 
 ### Installing from this fork
 
 ```bash
-git clone https://github.com/ArtyMcLabin/Gmail-MCP-Server.git
+git clone https://github.com/seancabalse/Gmail-MCP-Server.git
 cd Gmail-MCP-Server
 npm install
 npm run build
